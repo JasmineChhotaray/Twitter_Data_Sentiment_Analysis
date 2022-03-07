@@ -1,0 +1,49 @@
+version: "3"
+# service -> container
+services:
+    # service name
+    my_first_service:
+        build: my_first_image
+        volumes:
+            # hostpath:guestpath
+            -  ./my_first_image/src:/app/
+    mypg:
+        image: postgres
+        ports:
+            # (localhost)hostport: (mypg)guestport # 5432 is a simulated port in the container
+            - 5555:5432
+        # setting environment variables
+        environment:
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=sql123
+    tweet_collector:
+        build: tweet_collector
+        volumes:
+            - ./tweet_collector/src:/app/
+            - ./logs:/log/
+        depends_on: 
+            - mypg
+        env_file:
+            - .env
+
+    slack_bot:
+        build: slack_bot
+        volumes:
+            - ./slack_bot/src:/app/
+        depends_on:
+            - tweet_collector
+        env_file:
+            - .env
+
+    sentimentel:
+        build: sentimentel
+        volumes:
+            - ./sentimentel/src:/app/
+            - ./sentimentel/data:/data/
+        # read in the .env file and sets the environment variables
+        env_file:
+            - .env
+
+
+
+
