@@ -6,7 +6,9 @@ import tweepy
 import json
 from pymongo import MongoClient
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
+import pandas as pd
+from sqlalchemy import create_engine
+import psycopg2
 
 
 class TwitterDataPipeline:
@@ -26,6 +28,12 @@ class TwitterDataPipeline:
         self.store_json_in_mongodb()
         # Updates accuracy field of the collection and stores in MongoDB
         self.accuracy_store_mongodb()
+        # Extract data from MongoDB to JSON file
+        self.extract_final_json()
+        # Converting JSON to Pandas DataFrame
+        dataframe = self.json_to_pandas()
+        # Converting dataframe to CSV
+        self.dataframe_to_csv(dataframe)
 
     def collect_tweets(self):
         # Provides Authentication to collect tweets
@@ -60,15 +68,12 @@ class TwitterDataPipeline:
             method=self.client.get_users_tweets,
             id=user_information['id'],
             exclude=['retweets', 'replies']
-        ).flatten(limit=50)
+        ).flatten(limit=200)
 
         # for tweet in cursor:
         #     print(f"\n{tweet}")
 
         return cursor
-
-    def collect_search_tweets(self):
-        pass
 
     def store_tweets_in_json(self, tweets_cursor):
         tweets_list = []
@@ -88,7 +93,7 @@ class TwitterDataPipeline:
     def connect_to_mongodb(self):
         self.cluster = MongoClient(os.getenv('MongoDB_Conn'))
         db = self.cluster["MyProjects"]
-        self.collection = db["test_tweets"]
+        self.collection = db["tweets"]
 
         # post = {"_id": 108, "name": "jazz", "score": 7}
         # self.collection.insert_one(post)
@@ -108,8 +113,6 @@ class TwitterDataPipeline:
                         self.collection.insert_one(json_in_dict)
                     except:
                         continue
-                    
-
 
     def tweets_sentiment_analysis(self, text):
         s = SentimentIntensityAnalyzer()
@@ -129,8 +132,40 @@ class TwitterDataPipeline:
                                     }
                                    )
 
-    def publish_to_slack(self):
-        pass
+    def extract_final_json(self):
+        """Extract data in JSON format which will be used for Tableau visualization"""
+        final_tweets_list = []
+        count = 1
+        all_tweets = self.collection.find({})
+        with open('all_tweets.json', 'w') as final_data:
+            for tweet in all_tweets:
+                tweets = {count: dict(tweet)}
+                count += 1
+                # print(tweets)
+                final_tweets_list.append(tweets)
+
+            json.dump(final_tweets_list, final_data, indent=4)
+
+    def json_to_pandas(self):
+        """Make unstructured to structured data using Pandas Dataframe."""
+        with open('all_tweets.json', 'r') as f:
+            data = json.load(f)
+            records = []
+            for count, value in enumerate(data):
+                # print(value)
+                for key, val in value.items():
+                    # print(val)
+                    records.append(val)
+            # print(records)
+
+            result = pd.json_normalize(records)
+            # print(result)
+            return result
+
+    def dataframe_to_csv(self, dataframe):
+        """Stores dataframe in CSV file"""
+        dataframe.to_csv('tweets.csv', encoding='utf-8')
+
 
 def parsing_arguments():
     """Provide arguments from Command Line."""
